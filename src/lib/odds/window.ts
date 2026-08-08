@@ -7,7 +7,7 @@ export const SOON_HOURS = 6;
 
 export function parseTimeWindow(value: string | null | undefined): TimeWindow {
   if (value === "live" || value === "soon" || value === "all") return value;
-  return "soon";
+  return "live";
 }
 
 export function eventPhase(

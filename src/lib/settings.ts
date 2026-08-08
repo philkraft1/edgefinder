@@ -24,7 +24,7 @@ export const DEFAULT_SETTINGS: AnalyzerSettings = {
   minEvPercent: 1.5,
   maxParlayLegs: 4,
   sports: DEFAULT_LIVE_SPORTS,
-  timeWindow: "soon",
+  timeWindow: "live",
   ticketMode: "sameBook",
   preferredBook: "any",
 };

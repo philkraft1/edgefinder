@@ -29,14 +29,25 @@ export function DeskControls({
 
   useEffect(() => {
     const settings = loadSettings();
+    const onLiveRoute = pathname.startsWith("/live");
     const fromUrl = parseTimeWindow(searchParams.get("window"));
-    const bookFromUrl = (searchParams.get("book") as PreferredBook | null) ?? settings.preferredBook;
+    const bookFromUrl =
+      (searchParams.get("book") as PreferredBook | null) ??
+      settings.preferredBook;
     const modeFromUrl =
       (searchParams.get("mode") as TicketMode | null) ?? settings.ticketMode;
-    setWindow(searchParams.get("window") ? fromUrl : settings.timeWindow);
+    // Live page always locks to in-play unless URL overrides to soon/all
+    const resolvedWindow = onLiveRoute
+      ? searchParams.get("window")
+        ? fromUrl
+        : "live"
+      : searchParams.get("window")
+        ? fromUrl
+        : settings.timeWindow;
+    setWindow(resolvedWindow);
     setBook(bookFromUrl || "any");
     setTicketMode(modeFromUrl === "singles" ? "singles" : "sameBook");
-  }, [searchParams]);
+  }, [searchParams, pathname]);
 
   function pushParams(next: {
     window?: TimeWindow;

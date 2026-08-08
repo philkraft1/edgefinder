@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const links = [
+  { href: "/live", label: "Live", accent: true },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/edges", label: "Edges" },
   { href: "/parlay", label: "Parlay Lab" },
@@ -28,17 +29,29 @@ export function AppNav() {
         <nav className="flex flex-wrap items-center gap-1 text-sm">
           {links.map((link) => {
             const active = pathname.startsWith(link.href);
+            const isLive = link.href === "/live";
             return (
               <Link
                 key={link.href}
-                href={link.href}
+                href={isLive ? "/live?window=live" : link.href}
                 className={`rounded-md px-3 py-1.5 transition-colors ${
                   active
-                    ? "bg-accent/15 text-accent"
-                    : "text-muted hover:bg-panel hover:text-foreground"
+                    ? isLive
+                      ? "bg-danger/20 text-danger"
+                      : "bg-accent/15 text-accent"
+                    : isLive
+                      ? "text-danger/80 hover:bg-danger/10 hover:text-danger"
+                      : "text-muted hover:bg-panel hover:text-foreground"
                 }`}
               >
-                {link.label}
+                {isLive ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-danger" />
+                    Live
+                  </span>
+                ) : (
+                  link.label
+                )}
               </Link>
             );
           })}
