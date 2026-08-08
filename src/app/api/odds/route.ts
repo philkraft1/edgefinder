@@ -24,5 +24,6 @@ export async function GET(req: NextRequest) {
     events: bundle.events,
     board,
     stats: bundle.stats,
+    fallbackReason: bundle.fallbackReason,
   });
 }

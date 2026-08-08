@@ -64,7 +64,11 @@ export default async function LivePage({
             Games already started — edges and same-book parlays updating now.
           </p>
         </div>
-        <SourceBadge source={bundle.source} fetchedAt={bundle.fetchedAt} />
+        <SourceBadge
+          source={bundle.source}
+          fetchedAt={bundle.fetchedAt}
+          fallbackReason={bundle.fallbackReason}
+        />
       </div>
 
       <Suspense fallback={<div className="h-10" />}>

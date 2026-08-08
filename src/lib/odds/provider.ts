@@ -104,6 +104,8 @@ export interface OddsBundle {
   stats: ReturnType<typeof getMockStats>;
   fetchedAt: string;
   window: TimeWindow;
+  /** Set when falling back to mock despite a configured API key */
+  fallbackReason?: string;
 }
 
 export async function loadOddsBundle(opts?: {
@@ -139,6 +141,19 @@ export async function loadOddsBundle(opts?: {
     );
     const raw = chunks.flat().filter((e) => e.bookmakers.length > 0);
     const events = filterEventsByWindow(raw, window);
+    if (!raw.length) {
+      const mock = filterEventsByWindow(getMockEvents(sportList), window);
+      return {
+        source: "mock",
+        events: mock,
+        snapshots: MOCK_SNAPSHOTS,
+        stats: getMockStats(mock.flatMap((e) => [e.homeTeam, e.awayTeam])),
+        fetchedAt,
+        window,
+        fallbackReason:
+          "Odds API returned no bookmaker markets (quota may be exhausted).",
+      };
+    }
     return {
       source: "live",
       events,
@@ -147,7 +162,9 @@ export async function loadOddsBundle(opts?: {
       fetchedAt,
       window,
     };
-  } catch {
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Odds API request failed";
     const raw = getMockEvents(sportList);
     const events = filterEventsByWindow(raw, window);
     return {
@@ -157,6 +174,9 @@ export async function loadOddsBundle(opts?: {
       stats: getMockStats(events.flatMap((e) => [e.homeTeam, e.awayTeam])),
       fetchedAt,
       window,
+      fallbackReason: message.includes("401")
+        ? "Odds API unauthorized or out of credits — showing mock feed."
+        : `Odds API error — showing mock feed. (${message})`,
     };
   }
 }

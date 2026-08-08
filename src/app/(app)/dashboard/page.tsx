@@ -60,7 +60,11 @@ export default async function DashboardPage({
             Live & soon markets · same-book tickets only.
           </p>
         </div>
-        <SourceBadge source={bundle.source} fetchedAt={bundle.fetchedAt} />
+        <SourceBadge
+          source={bundle.source}
+          fetchedAt={bundle.fetchedAt}
+          fallbackReason={bundle.fallbackReason}
+        />
       </div>
 
       <Suspense fallback={<div className="h-10" />}>

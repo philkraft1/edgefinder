@@ -34,5 +34,6 @@ export async function GET(req: NextRequest) {
     book,
     count: edges.length,
     edges,
+    fallbackReason: bundle.fallbackReason,
   });
 }
