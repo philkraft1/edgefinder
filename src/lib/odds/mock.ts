@@ -92,6 +92,7 @@ const MOCK_EVENTS: EventOdds[] = [
     id: "nfl-kc-buf",
     sportKey: "americanfootball_nfl",
     sportTitle: "NFL",
+    // Far out — only in All window
     commenceTime: hoursFromNow(30),
     homeTeam: "Buffalo Bills",
     awayTeam: "Kansas City Chiefs",
@@ -124,7 +125,8 @@ const MOCK_EVENTS: EventOdds[] = [
     id: "nba-bos-nyk",
     sportKey: "basketball_nba",
     sportTitle: "NBA",
-    commenceTime: hoursFromNow(8),
+    // In-play
+    commenceTime: hoursFromNow(-1.2),
     homeTeam: "New York Knicks",
     awayTeam: "Boston Celtics",
     bookmakers: bookmakersFor(
@@ -140,7 +142,8 @@ const MOCK_EVENTS: EventOdds[] = [
     id: "nba-den-lal",
     sportKey: "basketball_nba",
     sportTitle: "NBA",
-    commenceTime: hoursFromNow(10),
+    // In-play
+    commenceTime: hoursFromNow(-0.5),
     homeTeam: "Los Angeles Lakers",
     awayTeam: "Denver Nuggets",
     bookmakers: bookmakersFor(
@@ -156,7 +159,8 @@ const MOCK_EVENTS: EventOdds[] = [
     id: "mlb-nyy-bos",
     sportKey: "baseball_mlb",
     sportTitle: "MLB",
-    commenceTime: hoursFromNow(5),
+    // Starting soon
+    commenceTime: hoursFromNow(2),
     homeTeam: "Boston Red Sox",
     awayTeam: "New York Yankees",
     bookmakers: bookmakersFor(
@@ -172,7 +176,8 @@ const MOCK_EVENTS: EventOdds[] = [
     id: "mlb-lad-sd",
     sportKey: "baseball_mlb",
     sportTitle: "MLB",
-    commenceTime: hoursFromNow(6),
+    // Starting soon
+    commenceTime: hoursFromNow(3.5),
     homeTeam: "San Diego Padres",
     awayTeam: "Los Angeles Dodgers",
     bookmakers: bookmakersFor(

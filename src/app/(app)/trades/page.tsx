@@ -8,7 +8,10 @@ import { DEFAULT_SETTINGS } from "@/lib/settings";
 export const dynamic = "force-dynamic";
 
 export default async function TradesPage() {
-  const bundle = await loadOddsBundle(DEFAULT_SETTINGS.sports);
+  const bundle = await loadOddsBundle({
+    sports: DEFAULT_SETTINGS.sports,
+    window: "all",
+  });
   const alerts = detectSteam(bundle.snapshots);
   const eventMap = new Map(bundle.events.map((e) => [e.id, e]));
 

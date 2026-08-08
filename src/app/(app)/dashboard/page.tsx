@@ -1,24 +1,46 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { SourceBadge } from "@/components/SourceBadge";
 import { StatPill } from "@/components/StatPill";
+import { DeskControls } from "@/components/DeskControls";
+import { LiveBadge } from "@/components/LiveBadge";
 import { formatAmerican, formatPercent } from "@/lib/odds/convert";
 import { loadOddsBundle } from "@/lib/odds/provider";
 import { rankEdges } from "@/lib/edge/ev";
-import { suggestParlays } from "@/lib/edge/parlay";
+import { suggestParlaysByBook } from "@/lib/edge/parlay";
 import { detectSteam } from "@/lib/edge/steam";
 import { DEFAULT_SETTINGS } from "@/lib/settings";
 import { unitStake } from "@/lib/bankroll/kelly";
+import { parseTimeWindow } from "@/lib/odds/window";
+import type { BookKey } from "@/lib/odds/types";
 
 export const dynamic = "force-dynamic";
 
-export default async function DashboardPage() {
-  const bundle = await loadOddsBundle(DEFAULT_SETTINGS.sports);
-  const edges = rankEdges(bundle.events, DEFAULT_SETTINGS.minEvPercent);
-  const parlays = suggestParlays(edges, {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ window?: string; book?: string }>;
+}) {
+  const params = await searchParams;
+  const window = parseTimeWindow(params.window ?? DEFAULT_SETTINGS.timeWindow);
+  const book =
+    params.book && params.book !== "any"
+      ? (params.book as BookKey)
+      : ("any" as const);
+
+  const bundle = await loadOddsBundle({
+    sports: DEFAULT_SETTINGS.sports,
+    window,
+  });
+  const edges = rankEdges(bundle.events, DEFAULT_SETTINGS.minEvPercent, {
+    book,
+  });
+  const parlays = suggestParlaysByBook(edges, {
     maxLegs: DEFAULT_SETTINGS.maxParlayLegs,
     bankroll: DEFAULT_SETTINGS.bankroll,
     kellyFraction: DEFAULT_SETTINGS.kellyFraction,
     limit: 3,
+    book,
   });
   const steam = detectSteam(bundle.snapshots).slice(0, 3);
   const unit = unitStake(
@@ -35,11 +57,15 @@ export default async function DashboardPage() {
             Desk
           </h1>
           <p className="mt-1 text-muted">
-            Best viable options from today&apos;s board.
+            Live & soon markets · same-book tickets only.
           </p>
         </div>
         <SourceBadge source={bundle.source} fetchedAt={bundle.fetchedAt} />
       </div>
+
+      <Suspense fallback={<div className="h-10" />}>
+        <DeskControls />
+      </Suspense>
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatPill label="Events" value={String(bundle.events.length)} />
@@ -62,13 +88,16 @@ export default async function DashboardPage() {
             <h2 className="font-[family-name:var(--font-display)] text-xl">
               Best single
             </h2>
-            <Link href="/edges" className="text-sm text-accent hover:underline">
+            <Link href={`/edges?window=${window}`} className="text-sm text-accent hover:underline">
               All edges
             </Link>
           </div>
           {top ? (
             <div>
-              <div className="text-sm text-muted">{top.sportTitle}</div>
+              <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
+                {top.sportTitle}
+                <LiveBadge commenceTime={top.commenceTime} />
+              </div>
               <div className="mt-1 text-2xl font-semibold">
                 {top.awayTeam} @ {top.homeTeam}
               </div>
@@ -103,11 +132,16 @@ export default async function DashboardPage() {
               </div>
             </div>
           ) : (
-            <p className="text-muted">No edges above threshold.</p>
+            <p className="text-muted">
+              No edges in this window. Try Soon or All.
+            </p>
           )}
         </div>
 
-        <div className="animate-rise rounded-xl border border-line bg-panel/60 p-5 lg:col-span-2" style={{ animationDelay: "80ms" }}>
+        <div
+          className="animate-rise rounded-xl border border-line bg-panel/60 p-5 lg:col-span-2"
+          style={{ animationDelay: "80ms" }}
+        >
           <div className="mb-4 flex items-center justify-between">
             <h2 className="font-[family-name:var(--font-display)] text-xl">
               Steam
@@ -146,9 +180,12 @@ export default async function DashboardPage() {
       <section>
         <div className="mb-4 flex items-center justify-between">
           <h2 className="font-[family-name:var(--font-display)] text-xl">
-            Top parlays
+            Top same-book parlays
           </h2>
-          <Link href="/parlay" className="text-sm text-accent hover:underline">
+          <Link
+            href={`/parlay?window=${window}&mode=sameBook`}
+            className="text-sm text-accent hover:underline"
+          >
             Parlay Lab
           </Link>
         </div>
@@ -159,7 +196,10 @@ export default async function DashboardPage() {
               className="animate-rise rounded-xl border border-line bg-panel/50 p-4"
               style={{ animationDelay: `${i * 70}ms` }}
             >
-              <div className="flex items-center justify-between">
+              <div className="text-[11px] uppercase tracking-[0.14em] text-muted">
+                {p.bookTitle}
+              </div>
+              <div className="mt-1 flex items-center justify-between">
                 <span className="font-mono text-accent">
                   {formatAmerican(p.combinedAmerican)}
                 </span>
@@ -180,7 +220,7 @@ export default async function DashboardPage() {
             </div>
           ))}
           {!parlays.length ? (
-            <p className="text-muted">No positive-EV parlays found.</p>
+            <p className="text-muted">No same-book parlays in this window.</p>
           ) : null}
         </div>
       </section>

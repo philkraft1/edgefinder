@@ -3,14 +3,18 @@ import { loadOddsBundle } from "@/lib/odds/provider";
 import { detectSteam } from "@/lib/edge/steam";
 import type { SportKey } from "@/lib/odds/types";
 import { DEFAULT_SETTINGS } from "@/lib/settings";
+import { parseTimeWindow } from "@/lib/odds/window";
 
 export async function GET(req: NextRequest) {
   const sportsParam = req.nextUrl.searchParams.get("sports");
   const sports = (
     sportsParam ? sportsParam.split(",") : DEFAULT_SETTINGS.sports
   ) as SportKey[];
+  const window = parseTimeWindow(
+    req.nextUrl.searchParams.get("window") ?? DEFAULT_SETTINGS.timeWindow,
+  );
 
-  const bundle = await loadOddsBundle(sports);
+  const bundle = await loadOddsBundle({ sports, window });
   const alerts = detectSteam(bundle.snapshots);
 
   const eventMap = new Map(bundle.events.map((e) => [e.id, e]));
@@ -29,6 +33,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     source: bundle.source,
     fetchedAt: bundle.fetchedAt,
+    window: bundle.window,
     alerts: enriched,
     snapshots: bundle.snapshots,
   });

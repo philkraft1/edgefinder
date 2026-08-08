@@ -1,15 +1,36 @@
+import { Suspense } from "react";
 import { SourceBadge } from "@/components/SourceBadge";
 import { EdgesTable } from "@/components/EdgesTable";
+import { DeskControls } from "@/components/DeskControls";
+import { LiveBadge } from "@/components/LiveBadge";
 import { loadOddsBundle } from "@/lib/odds/provider";
 import { bestPriceBoard, rankEdges } from "@/lib/edge/ev";
 import { formatAmerican } from "@/lib/odds/convert";
 import { DEFAULT_SETTINGS } from "@/lib/settings";
+import { parseTimeWindow } from "@/lib/odds/window";
+import type { BookKey } from "@/lib/odds/types";
 
 export const dynamic = "force-dynamic";
 
-export default async function EdgesPage() {
-  const bundle = await loadOddsBundle(DEFAULT_SETTINGS.sports);
-  const edges = rankEdges(bundle.events, DEFAULT_SETTINGS.minEvPercent);
+export default async function EdgesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ window?: string; book?: string }>;
+}) {
+  const params = await searchParams;
+  const window = parseTimeWindow(params.window ?? DEFAULT_SETTINGS.timeWindow);
+  const book =
+    params.book && params.book !== "any"
+      ? (params.book as BookKey)
+      : ("any" as const);
+
+  const bundle = await loadOddsBundle({
+    sports: DEFAULT_SETTINGS.sports,
+    window,
+  });
+  const edges = rankEdges(bundle.events, DEFAULT_SETTINGS.minEvPercent, {
+    book,
+  });
   const board = bestPriceBoard(bundle.events).slice(0, 4);
 
   return (
@@ -20,11 +41,15 @@ export default async function EdgesPage() {
             Value finder
           </h1>
           <p className="mt-1 text-muted">
-            Singles ranked by expected value after sharp-book de-vig.
+            +EV singles in the selected window / book.
           </p>
         </div>
         <SourceBadge source={bundle.source} fetchedAt={bundle.fetchedAt} />
       </div>
+
+      <Suspense fallback={<div className="h-10" />}>
+        <DeskControls />
+      </Suspense>
 
       <EdgesTable edges={edges} />
 
@@ -39,8 +64,9 @@ export default async function EdgesPage() {
               className="overflow-hidden rounded-xl border border-line bg-panel/50"
             >
               <div className="border-b border-line px-4 py-3">
-                <div className="font-medium">
+                <div className="flex flex-wrap items-center gap-2 font-medium">
                   {event.awayTeam} @ {event.homeTeam}
+                  <LiveBadge commenceTime={event.commenceTime} />
                 </div>
                 <div className="text-xs text-muted">
                   {event.sportTitle} ·{" "}
@@ -80,6 +106,9 @@ export default async function EdgesPage() {
               </div>
             </div>
           ))}
+          {!board.length ? (
+            <p className="text-muted">No events in this window.</p>
+          ) : null}
         </div>
       </section>
     </div>

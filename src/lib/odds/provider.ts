@@ -10,6 +10,7 @@ import {
   LIVE_BOOKMAKERS,
 } from "@/lib/odds/types";
 import { getMockEvents, MOCK_SNAPSHOTS, getMockStats } from "@/lib/odds/mock";
+import { filterEventsByWindow, type TimeWindow } from "@/lib/odds/window";
 
 const ODDS_API_BASE = "https://api.the-odds-api.com/v4";
 
@@ -72,6 +73,7 @@ function normalizeEvent(raw: OddsApiEvent): EventOdds {
 async function fetchSportOdds(
   sport: SportKey,
   apiKey: string,
+  window: TimeWindow,
 ): Promise<EventOdds[]> {
   const params = new URLSearchParams({
     apiKey,
@@ -81,10 +83,11 @@ async function fetchSportOdds(
     bookmakers: LIVE_BOOKMAKERS,
   });
 
+  // Filter Live/Soon client-side so in-play is never dropped by API time params.
+  const revalidate = window === "all" ? 60 : 20;
   const url = `${ODDS_API_BASE}/sports/${sport}/odds?${params}`;
-  const res = await fetch(url, { next: { revalidate: 60 } });
+  const res = await fetch(url, { next: { revalidate } });
   if (!res.ok) {
-    // Sport may be out of season / unavailable — skip rather than fail all
     if (res.status === 404 || res.status === 422) return [];
     throw new Error(`Odds API ${sport} failed: ${res.status}`);
   }
@@ -100,55 +103,60 @@ export interface OddsBundle {
   snapshots: typeof MOCK_SNAPSHOTS;
   stats: ReturnType<typeof getMockStats>;
   fetchedAt: string;
+  window: TimeWindow;
 }
 
-export async function loadOddsBundle(sports?: SportKey[]): Promise<OddsBundle> {
+export async function loadOddsBundle(opts?: {
+  sports?: SportKey[];
+  window?: TimeWindow;
+}): Promise<OddsBundle> {
   const apiKey = process.env.ODDS_API_KEY?.trim();
   const fetchedAt = new Date().toISOString();
+  const window = opts?.window ?? "soon";
   const sportList =
-    sports?.length ? sports : apiKey ? DEFAULT_LIVE_SPORTS : [
-      "americanfootball_nfl",
-      "basketball_nba",
-      "baseball_mlb",
-    ];
+    opts?.sports?.length
+      ? opts.sports
+      : apiKey
+        ? DEFAULT_LIVE_SPORTS
+        : ["americanfootball_nfl", "basketball_nba", "baseball_mlb"];
 
   if (!apiKey) {
-    const events = getMockEvents(sportList as never);
+    const raw = getMockEvents(sportList);
+    const events = filterEventsByWindow(raw, window);
     return {
       source: "mock",
       events,
       snapshots: MOCK_SNAPSHOTS,
-      stats: getMockStats(
-        events.flatMap((e) => [e.homeTeam, e.awayTeam]),
-      ),
+      stats: getMockStats(events.flatMap((e) => [e.homeTeam, e.awayTeam])),
       fetchedAt,
+      window,
     };
   }
 
   try {
     const chunks = await Promise.all(
-      sportList.map((sport) => fetchSportOdds(sport, apiKey)),
+      sportList.map((sport) => fetchSportOdds(sport, apiKey, window)),
     );
-    const events = chunks.flat().filter((e) => e.bookmakers.length > 0);
+    const raw = chunks.flat().filter((e) => e.bookmakers.length > 0);
+    const events = filterEventsByWindow(raw, window);
     return {
       source: "live",
       events,
       snapshots: MOCK_SNAPSHOTS,
-      stats: getMockStats(
-        events.flatMap((e) => [e.homeTeam, e.awayTeam]),
-      ),
+      stats: getMockStats(events.flatMap((e) => [e.homeTeam, e.awayTeam])),
       fetchedAt,
+      window,
     };
   } catch {
-    const events = getMockEvents(sportList as never);
+    const raw = getMockEvents(sportList);
+    const events = filterEventsByWindow(raw, window);
     return {
       source: "mock",
       events,
       snapshots: MOCK_SNAPSHOTS,
-      stats: getMockStats(
-        events.flatMap((e) => [e.homeTeam, e.awayTeam]),
-      ),
+      stats: getMockStats(events.flatMap((e) => [e.homeTeam, e.awayTeam])),
       fetchedAt,
+      window,
     };
   }
 }

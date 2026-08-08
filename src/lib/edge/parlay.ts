@@ -5,6 +5,8 @@ import {
 } from "@/lib/odds/convert";
 import { kellyStake } from "@/lib/bankroll/kelly";
 import type { EdgeOpportunity } from "@/lib/edge/ev";
+import type { BookKey } from "@/lib/odds/types";
+import { BOOK_TITLES } from "@/lib/odds/types";
 
 export interface ParlayLeg {
   edgeId: string;
@@ -17,10 +19,13 @@ export interface ParlayLeg {
   fairProb: number;
   homeTeam: string;
   awayTeam: string;
+  commenceTime?: string;
 }
 
 export interface SuggestedParlay {
   id: string;
+  book: BookKey;
+  bookTitle: string;
   legs: ParlayLeg[];
   combinedDecimal: number;
   combinedAmerican: number;
@@ -31,10 +36,32 @@ export interface SuggestedParlay {
   score: number;
 }
 
+export interface SinglesPortfolioItem {
+  edgeId: string;
+  eventId: string;
+  sportTitle: string;
+  matchup: string;
+  selection: string;
+  point?: number;
+  market: string;
+  book: BookKey;
+  bookTitle: string;
+  price: number;
+  evPercent: number;
+  kellyStake: number;
+  commenceTime: string;
+}
+
+export interface SinglesPortfolio {
+  items: SinglesPortfolioItem[];
+  totalKellyStake: number;
+  note: string;
+}
+
 function toLeg(edge: EdgeOpportunity): ParlayLeg {
   return {
     edgeId: edge.id,
-    eventId: eventId(edge),
+    eventId: edge.eventId,
     selection: edge.selection,
     point: edge.point,
     market: edge.market,
@@ -43,11 +70,8 @@ function toLeg(edge: EdgeOpportunity): ParlayLeg {
     fairProb: edge.fairProb,
     homeTeam: edge.homeTeam,
     awayTeam: edge.awayTeam,
+    commenceTime: edge.commenceTime,
   };
-}
-
-function eventId(edge: EdgeOpportunity): string {
-  return edge.eventId;
 }
 
 function correlationFlags(legs: ParlayLeg[]): string[] {
@@ -78,10 +102,11 @@ function scoreParlay(
   legs: ParlayLeg[],
   bankroll: number,
   kellyFraction: number,
+  book: BookKey,
+  bookTitle: string,
 ): SuggestedParlay {
   const decimals = legs.map((l) => americanToDecimal(l.price));
   const combinedDecimal = combineDecimalOdds(decimals);
-  // Independence assumption, then penalize correlation in score
   const fairProb = legs.reduce((acc, l) => acc * l.fairProb, 1);
   const ev = fairProb * (combinedDecimal - 1) - (1 - fairProb);
   const flags = correlationFlags(legs);
@@ -90,7 +115,9 @@ function scoreParlay(
   const score = ev * 100 - corrPenalty + diversityBonus;
 
   return {
-    id: legs.map((l) => l.edgeId).join("|"),
+    id: `${book}|${legs.map((l) => l.edgeId).join("|")}`,
+    book,
+    bookTitle,
     legs,
     combinedDecimal,
     combinedAmerican: decimalToAmerican(combinedDecimal),
@@ -103,8 +130,7 @@ function scoreParlay(
 }
 
 /**
- * Beam-ish search over top edges for viable parlays.
- * Prefers de-correlated legs with positive combined EV.
+ * Beam search within a single book's edges only (bettable on that platform).
  */
 export function suggestParlays(
   edges: EdgeOpportunity[],
@@ -115,6 +141,8 @@ export function suggestParlays(
     kellyFraction?: number;
     limit?: number;
     poolSize?: number;
+    book?: BookKey;
+    bookTitle?: string;
   } = {},
 ): SuggestedParlay[] {
   const minLegs = opts.minLegs ?? 2;
@@ -123,10 +151,17 @@ export function suggestParlays(
   const kellyFraction = opts.kellyFraction ?? 0.25;
   const limit = opts.limit ?? 8;
   const poolSize = opts.poolSize ?? 24;
+  const bookKey = opts.book ?? (edges[0]?.book as BookKey | undefined);
+  const bookTitle =
+    opts.bookTitle ??
+    (bookKey ? BOOK_TITLES[bookKey] ?? String(bookKey) : "Book");
 
-  // Deduplicate by event+market+selection keeping best EV book
+  if (!bookKey) return [];
+
+  // Within one book: keep best EV per event+market+selection
   const bestBySelection = new Map<string, EdgeOpportunity>();
   for (const edge of edges) {
+    if (edge.book !== bookKey) continue;
     const key = `${edge.eventId}:${edge.market}:${edge.selection}:${edge.point ?? ""}`;
     const prev = bestBySelection.get(key);
     if (!prev || edge.evPercent > prev.evPercent) bestBySelection.set(key, edge);
@@ -149,25 +184,30 @@ export function suggestParlays(
       const usedEvents = new Set(beam.indices.map((i) => pool[i].eventId));
       const last = Math.max(...beam.indices);
       for (let i = last + 1; i < pool.length; i++) {
-        // Soft prefer unique events; allow same-game only if still scoring later
         const candidate = [...beam.indices, i];
         if (candidate.length < minLegs) {
           next.push({ indices: candidate });
           continue;
         }
         const legs = candidate.map((idx) => toLeg(pool[idx]));
-        const scored = scoreParlay(legs, bankroll, kellyFraction);
+        const scored = scoreParlay(
+          legs,
+          bankroll,
+          kellyFraction,
+          bookKey,
+          bookTitle,
+        );
         if (scored.evPercent > 0) completed.push(scored);
-        // Keep expanding if we haven't hit max and events stay diverse
         if (candidate.length < maxLegs) {
-          const uniqueEvents = new Set(candidate.map((idx) => pool[idx].eventId));
+          const uniqueEvents = new Set(
+            candidate.map((idx) => pool[idx].eventId),
+          );
           if (uniqueEvents.size >= usedEvents.size) {
             next.push({ indices: candidate });
           }
         }
       }
     }
-    // Cap beam width
     beams = next
       .map((b) => ({
         b,
@@ -175,6 +215,8 @@ export function suggestParlays(
           b.indices.map((i) => toLeg(pool[i])),
           bankroll,
           kellyFraction,
+          bookKey,
+          bookTitle,
         ).score,
       }))
       .sort((a, c) => c.s - a.s)
@@ -182,15 +224,115 @@ export function suggestParlays(
       .map((x) => x.b);
   }
 
-  // Deduplicate by leg set
   const seen = new Set<string>();
-  const unique = completed.filter((p) => {
-    if (seen.has(p.id)) return false;
-    seen.add(p.id);
-    return true;
-  });
+  return completed
+    .filter((p) => {
+      if (seen.has(p.id)) return false;
+      seen.add(p.id);
+      return true;
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+}
 
-  return unique.sort((a, b) => b.score - a.score).slice(0, limit);
+/**
+ * Build bettable same-book parlays by partitioning edges per bookmaker.
+ */
+export function suggestParlaysByBook(
+  edges: EdgeOpportunity[],
+  opts: {
+    minLegs?: number;
+    maxLegs?: number;
+    bankroll?: number;
+    kellyFraction?: number;
+    limit?: number;
+    book?: BookKey | "any";
+  } = {},
+): SuggestedParlay[] {
+  const bookFilter = opts.book && opts.book !== "any" ? opts.book : null;
+  const byBook = new Map<BookKey, EdgeOpportunity[]>();
+
+  for (const edge of edges) {
+    if (bookFilter && edge.book !== bookFilter) continue;
+    const list = byBook.get(edge.book) ?? [];
+    list.push(edge);
+    byBook.set(edge.book, list);
+  }
+
+  const perBookLimit = Math.max(2, Math.ceil((opts.limit ?? 8) / 2));
+  const all: SuggestedParlay[] = [];
+
+  for (const [book, bookEdges] of byBook) {
+    const tickets = suggestParlays(bookEdges, {
+      ...opts,
+      book,
+      bookTitle: BOOK_TITLES[book] ?? book,
+      limit: perBookLimit,
+    });
+    all.push(...tickets);
+  }
+
+  return all.sort((a, b) => b.score - a.score).slice(0, opts.limit ?? 8);
+}
+
+/**
+ * Best-price singles across books — place each leg at its own book (not a parlay).
+ */
+export function buildSinglesPortfolio(
+  edges: EdgeOpportunity[],
+  opts: {
+    limit?: number;
+    bankroll?: number;
+    kellyFraction?: number;
+    book?: BookKey | "any";
+  } = {},
+): SinglesPortfolio {
+  const limit = opts.limit ?? 8;
+  const bankroll = opts.bankroll ?? 1000;
+  const kellyFraction = opts.kellyFraction ?? 0.25;
+  const bookFilter = opts.book && opts.book !== "any" ? opts.book : null;
+
+  const bestBySelection = new Map<string, EdgeOpportunity>();
+  for (const edge of edges) {
+    if (bookFilter && edge.book !== bookFilter) continue;
+    if (edge.evPercent <= 0) continue;
+    const key = `${edge.eventId}:${edge.market}:${edge.selection}:${edge.point ?? ""}`;
+    const prev = bestBySelection.get(key);
+    if (!prev || edge.evPercent > prev.evPercent) bestBySelection.set(key, edge);
+  }
+
+  const items = [...bestBySelection.values()]
+    .sort((a, b) => b.evPercent - a.evPercent)
+    .slice(0, limit)
+    .map((edge) => {
+      const stake = kellyStake(
+        bankroll,
+        edge.decimalOdds,
+        edge.fairProb,
+        kellyFraction,
+      );
+      return {
+        edgeId: edge.id,
+        eventId: edge.eventId,
+        sportTitle: edge.sportTitle,
+        matchup: `${edge.awayTeam} @ ${edge.homeTeam}`,
+        selection: edge.selection,
+        point: edge.point,
+        market: edge.market,
+        book: edge.book,
+        bookTitle: edge.bookTitle,
+        price: edge.price,
+        evPercent: edge.evPercent,
+        kellyStake: stake,
+        commenceTime: edge.commenceTime,
+      };
+    });
+
+  return {
+    items,
+    totalKellyStake: items.reduce((s, i) => s + i.kellyStake, 0),
+    note: "Bet these as separate singles at each book — not one combined parlay.",
+  };
 }
 
 export function evaluateManualParlay(
@@ -203,5 +345,32 @@ export function evaluateManualParlay(
     .map((id) => edges.find((e) => e.id === id))
     .filter((e): e is EdgeOpportunity => Boolean(e));
   if (selected.length < 2) return null;
-  return scoreParlay(selected.map(toLeg), bankroll, kellyFraction);
+
+  const books = new Set(selected.map((e) => e.book));
+  if (books.size > 1) {
+    // Still score for preview, but tag correlation with cross-book warning
+    const book = selected[0].book;
+    const scored = scoreParlay(
+      selected.map(toLeg),
+      bankroll,
+      kellyFraction,
+      book,
+      selected[0].bookTitle,
+    );
+    scored.correlationFlags = [
+      "Cross-book legs — not bettable as one parlay. Lock to one book or use singles portfolio.",
+      ...scored.correlationFlags,
+    ];
+    scored.score -= 50;
+    return scored;
+  }
+
+  const book = selected[0].book;
+  return scoreParlay(
+    selected.map(toLeg),
+    bankroll,
+    kellyFraction,
+    book,
+    selected[0].bookTitle,
+  );
 }

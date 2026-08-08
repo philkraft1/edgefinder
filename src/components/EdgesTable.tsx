@@ -1,6 +1,7 @@
 "use client";
 
 import { formatAmerican, formatPercent } from "@/lib/odds/convert";
+import { LiveBadge } from "@/components/LiveBadge";
 
 export interface EdgeRow {
   id: string;
@@ -82,8 +83,9 @@ export function EdgesTable({
                 ) : null}
                 <td className="px-3 py-3 font-mono text-muted">#{i + 1}</td>
                 <td className="px-3 py-3">
-                  <div className="font-medium">
+                  <div className="flex flex-wrap items-center gap-2 font-medium">
                     {edge.awayTeam} @ {edge.homeTeam}
+                    <LiveBadge commenceTime={edge.commenceTime} />
                   </div>
                   <div className="text-xs text-muted">
                     {edge.sportTitle} ·{" "}

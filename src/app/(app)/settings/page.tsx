@@ -8,9 +8,22 @@ import {
   type AnalyzerSettings,
 } from "@/lib/settings";
 import type { SportKey } from "@/lib/odds/types";
-import { SPORT_TITLES } from "@/lib/odds/types";
+import { BOOK_TITLES, SPORT_TITLES } from "@/lib/odds/types";
+import type { PreferredBook, TicketMode } from "@/lib/settings";
+import type { TimeWindow } from "@/lib/odds/window";
 
 const ALL_SPORTS = Object.keys(SPORT_TITLES) as SportKey[];
+const WINDOWS: TimeWindow[] = ["live", "soon", "all"];
+const BOOKS: PreferredBook[] = [
+  "any",
+  "draftkings",
+  "fanduel",
+  "betmgm",
+  "bovada",
+  "betrivers",
+  "williamhill_us",
+  "pinnacle",
+];
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<AnalyzerSettings>(DEFAULT_SETTINGS);
@@ -127,6 +140,64 @@ export default function SettingsPage() {
             onChange={(e) => update("maxParlayLegs", Number(e.target.value))}
             className="mt-1 w-full rounded-md border border-line bg-elevated px-3 py-2 font-mono outline-none focus:border-accent"
           />
+        </label>
+
+        <label className="block">
+          <span className="text-xs uppercase tracking-[0.16em] text-muted">
+            Default time window
+          </span>
+          <select
+            value={settings.timeWindow}
+            onChange={(e) =>
+              update("timeWindow", e.target.value as TimeWindow)
+            }
+            className="mt-1 w-full rounded-md border border-line bg-elevated px-3 py-2 outline-none focus:border-accent"
+          >
+            {WINDOWS.map((w) => (
+              <option key={w} value={w}>
+                {w === "live"
+                  ? "Live (in-play only)"
+                  : w === "soon"
+                    ? "Soon (live + 6h)"
+                    : "All upcoming"}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="block">
+          <span className="text-xs uppercase tracking-[0.16em] text-muted">
+            Default ticket mode
+          </span>
+          <select
+            value={settings.ticketMode}
+            onChange={(e) =>
+              update("ticketMode", e.target.value as TicketMode)
+            }
+            className="mt-1 w-full rounded-md border border-line bg-elevated px-3 py-2 outline-none focus:border-accent"
+          >
+            <option value="sameBook">Same-book parlays</option>
+            <option value="singles">Multi-book singles portfolio</option>
+          </select>
+        </label>
+
+        <label className="block">
+          <span className="text-xs uppercase tracking-[0.16em] text-muted">
+            Preferred book
+          </span>
+          <select
+            value={settings.preferredBook}
+            onChange={(e) =>
+              update("preferredBook", e.target.value as PreferredBook)
+            }
+            className="mt-1 w-full rounded-md border border-line bg-elevated px-3 py-2 outline-none focus:border-accent"
+          >
+            {BOOKS.map((key) => (
+              <option key={key} value={key}>
+                {key === "any" ? "Any platform" : BOOK_TITLES[key] ?? key}
+              </option>
+            ))}
+          </select>
         </label>
 
         <div>

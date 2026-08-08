@@ -1,31 +1,106 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { EdgesTable, type EdgeRow } from "@/components/EdgesTable";
 import { ParlayCard, type ParlayView } from "@/components/ParlayCard";
 import { SourceBadge } from "@/components/SourceBadge";
+import { DeskControls } from "@/components/DeskControls";
+import { LiveBadge } from "@/components/LiveBadge";
 import { loadSettings } from "@/lib/settings";
 import { formatAmerican, formatPercent } from "@/lib/odds/convert";
+import { useSearchParams } from "next/navigation";
+
+interface PortfolioItem {
+  edgeId: string;
+  matchup: string;
+  selection: string;
+  point?: number;
+  bookTitle: string;
+  price: number;
+  evPercent: number;
+  kellyStake: number;
+  commenceTime: string;
+  sportTitle: string;
+}
 
 interface Props {
   initialEdges: EdgeRow[];
   initialParlays: ParlayView[];
+  initialPortfolio: PortfolioItem[] | null;
   source: string;
   fetchedAt: string;
+  mode: "sameBook" | "singles";
 }
 
 export function ParlayLabClient({
   initialEdges,
   initialParlays,
+  initialPortfolio,
   source,
   fetchedAt,
+  mode: initialMode,
 }: Props) {
+  const searchParams = useSearchParams();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [manual, setManual] = useState<ParlayView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [edges, setEdges] = useState(initialEdges);
+  const [parlays, setParlays] = useState(initialParlays);
+  const [portfolio, setPortfolio] = useState(initialPortfolio);
+  const [mode, setMode] = useState(initialMode);
+  const [meta, setMeta] = useState({ source, fetchedAt });
 
   const settings = useMemo(() => loadSettings(), []);
+
+  const refresh = useCallback(async () => {
+    const window = searchParams.get("window") ?? settings.timeWindow;
+    const book = searchParams.get("book") ?? settings.preferredBook;
+    const ticketMode =
+      searchParams.get("mode") ?? settings.ticketMode ?? "sameBook";
+    const qs = new URLSearchParams({
+      window,
+      mode: ticketMode,
+      bankroll: String(settings.bankroll),
+      kellyFraction: String(settings.kellyFraction),
+      maxLegs: String(settings.maxParlayLegs),
+    });
+    if (book && book !== "any") qs.set("book", book);
+
+    const [edgesRes, parlaysRes] = await Promise.all([
+      fetch(`/api/edges?${qs}&minEv=0.5`),
+      fetch(`/api/parlays?${qs}`),
+    ]);
+    const edgesData = await edgesRes.json();
+    const parlaysData = await parlaysRes.json();
+    setEdges(edgesData.edges ?? []);
+    setParlays(parlaysData.parlays ?? []);
+    setPortfolio(parlaysData.portfolio?.items ?? null);
+    setMode(parlaysData.mode === "singles" ? "singles" : "sameBook");
+    setMeta({
+      source: parlaysData.source ?? edgesData.source,
+      fetchedAt: parlaysData.fetchedAt ?? edgesData.fetchedAt,
+    });
+  }, [searchParams, settings]);
+
+  useEffect(() => {
+    setEdges(initialEdges);
+    setParlays(initialParlays);
+    setPortfolio(initialPortfolio);
+    setMode(initialMode);
+    setMeta({ source, fetchedAt });
+  }, [initialEdges, initialParlays, initialPortfolio, initialMode, source, fetchedAt]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    const window = searchParams.get("window") ?? settings.timeWindow;
+    if (window !== "live" && window !== "soon") return;
+    const id = setInterval(() => void refresh(), 30_000);
+    return () => clearInterval(id);
+  }, [searchParams, settings.timeWindow, refresh]);
 
   useEffect(() => {
     setManual(null);
@@ -53,6 +128,8 @@ export function ParlayLabClient({
           bankroll: settings.bankroll,
           kellyFraction: settings.kellyFraction,
           sports: settings.sports,
+          window: searchParams.get("window") ?? settings.timeWindow,
+          book: searchParams.get("book") ?? settings.preferredBook,
         }),
       });
       const data = await res.json();
@@ -77,25 +154,87 @@ export function ParlayLabClient({
             Parlay Lab
           </h1>
           <p className="mt-1 text-muted">
-            Auto-suggested tickets plus a manual builder from top edges.
+            Same-book parlays you can actually ticket — or a multi-book singles
+            portfolio.
           </p>
         </div>
-        <SourceBadge source={source} fetchedAt={fetchedAt} />
+        <SourceBadge source={meta.source} fetchedAt={meta.fetchedAt} />
       </div>
 
-      <section>
-        <h2 className="mb-4 font-[family-name:var(--font-display)] text-xl">
-          Auto suggestions
-        </h2>
-        <div className="grid gap-4 lg:grid-cols-2">
-          {initialParlays.map((parlay, i) => (
-            <ParlayCard key={parlay.id} parlay={parlay} rank={i + 1} />
-          ))}
-          {!initialParlays.length ? (
-            <p className="text-muted">No positive-EV parlays in the pool.</p>
+      <DeskControls showTicketMode />
+
+      {mode === "singles" ? (
+        <section className="space-y-3">
+          <h2 className="font-[family-name:var(--font-display)] text-xl">
+            Singles portfolio
+          </h2>
+          <p className="text-sm text-warn">
+            Bet each leg at its listed book — not one combined parlay.
+          </p>
+          <div className="overflow-x-auto rounded-xl border border-line bg-panel/50">
+            <table className="min-w-full text-sm">
+              <thead className="border-b border-line text-[11px] uppercase tracking-[0.14em] text-muted">
+                <tr>
+                  <th className="px-3 py-3 text-left">Matchup</th>
+                  <th className="px-3 py-3 text-left">Selection</th>
+                  <th className="px-3 py-3 text-left">Book</th>
+                  <th className="px-3 py-3 text-left">Price</th>
+                  <th className="px-3 py-3 text-left">EV</th>
+                  <th className="px-3 py-3 text-left">Kelly</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(portfolio ?? []).map((item) => (
+                  <tr key={item.edgeId} className="border-b border-line/70">
+                    <td className="px-3 py-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {item.matchup}
+                        <LiveBadge commenceTime={item.commenceTime} />
+                      </div>
+                      <div className="text-xs text-muted">{item.sportTitle}</div>
+                    </td>
+                    <td className="px-3 py-3">
+                      {item.selection}
+                      {item.point !== undefined
+                        ? ` ${item.point > 0 ? "+" : ""}${item.point}`
+                        : ""}
+                    </td>
+                    <td className="px-3 py-3">{item.bookTitle}</td>
+                    <td className="px-3 py-3 font-mono text-accent">
+                      {formatAmerican(item.price)}
+                    </td>
+                    <td className="px-3 py-3 font-mono text-positive">
+                      +{formatPercent(item.evPercent / 100)}
+                    </td>
+                    <td className="px-3 py-3 font-mono">
+                      ${item.kellyStake.toFixed(2)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {!portfolio?.length ? (
+            <p className="text-muted">No +EV singles in this window.</p>
           ) : null}
-        </div>
-      </section>
+        </section>
+      ) : (
+        <section>
+          <h2 className="mb-4 font-[family-name:var(--font-display)] text-xl">
+            Same-book suggestions
+          </h2>
+          <div className="grid gap-4 lg:grid-cols-2">
+            {parlays.map((parlay, i) => (
+              <ParlayCard key={parlay.id} parlay={parlay} rank={i + 1} />
+            ))}
+            {!parlays.length ? (
+              <p className="text-muted">
+                No positive-EV same-book parlays in this window.
+              </p>
+            ) : null}
+          </div>
+        </section>
+      )}
 
       <section className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -111,9 +250,13 @@ export function ParlayLabClient({
             {loading ? "Scoring…" : `Score ${selected.size} legs`}
           </button>
         </div>
+        <p className="text-xs text-muted">
+          Tip: pick legs from the same book for a real ticket. Mixing books
+          shows a warning.
+        </p>
 
         <EdgesTable
-          edges={initialEdges.slice(0, 20)}
+          edges={edges.slice(0, 20)}
           selectable
           selectedIds={selected}
           onToggle={toggle}
@@ -130,7 +273,7 @@ export function ParlayLabClient({
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
                 <div className="text-[11px] uppercase tracking-[0.16em] text-muted">
-                  Your ticket
+                  {manual.bookTitle ?? "Your"} ticket
                 </div>
                 <div className="mt-1 font-[family-name:var(--font-display)] text-3xl text-accent">
                   {formatAmerican(manual.combinedAmerican)}

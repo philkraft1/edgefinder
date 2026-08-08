@@ -1,5 +1,9 @@
-import type { SportKey } from "@/lib/odds/types";
+import type { BookKey, SportKey } from "@/lib/odds/types";
 import { DEFAULT_LIVE_SPORTS } from "@/lib/odds/types";
+import type { TimeWindow } from "@/lib/odds/window";
+
+export type TicketMode = "sameBook" | "singles";
+export type PreferredBook = "any" | BookKey;
 
 export interface AnalyzerSettings {
   bankroll: number;
@@ -8,6 +12,9 @@ export interface AnalyzerSettings {
   minEvPercent: number;
   maxParlayLegs: number;
   sports: SportKey[];
+  timeWindow: TimeWindow;
+  ticketMode: TicketMode;
+  preferredBook: PreferredBook;
 }
 
 export const DEFAULT_SETTINGS: AnalyzerSettings = {
@@ -17,6 +24,9 @@ export const DEFAULT_SETTINGS: AnalyzerSettings = {
   minEvPercent: 1.5,
   maxParlayLegs: 4,
   sports: DEFAULT_LIVE_SPORTS,
+  timeWindow: "soon",
+  ticketMode: "sameBook",
+  preferredBook: "any",
 };
 
 const STORAGE_KEY = "edgefinder-settings";

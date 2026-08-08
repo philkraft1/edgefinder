@@ -93,8 +93,11 @@ function findReferenceOutcomes(
 export function rankEdges(
   events: EventOdds[],
   minEvPercent = 0,
+  opts: { book?: BookKey | "any"; maxAbsPrice?: number } = {},
 ): EdgeOpportunity[] {
   const edges: EdgeOpportunity[] = [];
+  const bookFilter = opts.book && opts.book !== "any" ? opts.book : null;
+  const maxAbsPrice = opts.maxAbsPrice ?? 1000;
 
   for (const event of events) {
     const markets: MarketKey[] = ["h2h", "spreads", "totals"];
@@ -107,10 +110,13 @@ export function rankEdges(
       reference.forEach((o, i) => fairMap.set(outcomeKey(o), fairProbs[i]));
 
       for (const book of event.bookmakers) {
+        if (bookFilter && book.key !== bookFilter) continue;
         const bookMarket = book.markets.find((m) => m.key === market);
         if (!bookMarket) continue;
 
         for (const outcome of bookMarket.outcomes) {
+          if (Math.abs(outcome.price) >= maxAbsPrice) continue;
+
           const key = outcomeKey(outcome);
           const fairProb = fairMap.get(key);
           if (fairProb === undefined) continue;
