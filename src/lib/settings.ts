@@ -1,4 +1,5 @@
 import type { SportKey } from "@/lib/odds/types";
+import { DEFAULT_LIVE_SPORTS } from "@/lib/odds/types";
 
 export interface AnalyzerSettings {
   bankroll: number;
@@ -15,7 +16,7 @@ export const DEFAULT_SETTINGS: AnalyzerSettings = {
   unitPercent: 0.01,
   minEvPercent: 1.5,
   maxParlayLegs: 4,
-  sports: ["americanfootball_nfl", "basketball_nba", "baseball_mlb"],
+  sports: DEFAULT_LIVE_SPORTS,
 };
 
 const STORAGE_KEY = "edgefinder-settings";

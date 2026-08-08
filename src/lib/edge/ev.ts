@@ -47,6 +47,15 @@ function outcomeKey(o: OutcomeOdds): string {
   return o.point === undefined ? o.name : `${o.name}|${o.point}`;
 }
 
+function medianPrice(prices: number[]): number {
+  const sorted = [...prices].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)];
+}
+
+/**
+ * Sharp book when available; otherwise consensus (median price per selection)
+ * across books so soft outliers don't define "fair".
+ */
 function findReferenceOutcomes(
   event: EventOdds,
   market: MarketKey,
@@ -54,12 +63,31 @@ function findReferenceOutcomes(
   const sharp = marketOutcomes(event, SHARP_BOOK, market);
   if (sharp && sharp.length >= 2) return sharp;
 
-  // Fallback: average-ish — use the book with most complete two-way market
+  const bySelection = new Map<string, { outcome: OutcomeOdds; prices: number[] }>();
   for (const book of event.bookmakers) {
     const m = book.markets.find((x) => x.key === market);
-    if (m && m.outcomes.length >= 2) return m.outcomes;
+    if (!m) continue;
+    for (const o of m.outcomes) {
+      const key = outcomeKey(o);
+      const entry = bySelection.get(key) ?? { outcome: o, prices: [] };
+      entry.prices.push(o.price);
+      bySelection.set(key, entry);
+    }
   }
-  return null;
+
+  if (bySelection.size < 2) {
+    for (const book of event.bookmakers) {
+      const m = book.markets.find((x) => x.key === market);
+      if (m && m.outcomes.length >= 2) return m.outcomes;
+    }
+    return null;
+  }
+
+  return [...bySelection.values()].map(({ outcome, prices }) => ({
+    name: outcome.name,
+    point: outcome.point,
+    price: medianPrice(prices),
+  }));
 }
 
 export function rankEdges(
